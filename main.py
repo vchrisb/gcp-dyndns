@@ -54,6 +54,7 @@ def dyndns(request):
   username = auth.username()
   print (f"Request Url: {request.url}")
   #print(f"{project_id}")
+  print(f"Request Proto: {request.headers.get('X-Forwarded-Proto')}")
   print(f"Updating with IP: {myip}, Hostname: {hostname}, User: {username}")
   if update_dns(hostname, myip):
     return ('success', 200)
