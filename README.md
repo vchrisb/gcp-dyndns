@@ -1,4 +1,4 @@
-# google-cloud-dns-dyndns
+# gcp-dyndns
 
 Dyndns for Google Cloud DNS implemented using a Google functions
 
