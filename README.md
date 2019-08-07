@@ -27,19 +27,19 @@ The URL can also be e.g. `https://<region>-<project-id>.cloudfunctions.net/dyndn
 ### tested with Ubiquity USG
 
 This setup runs succefully with configuring Unifi USG in Unifi Controller under `Settings -> Services -> Dynamic DNS` with  
-Service: `dyndns`
-Hostname: `host.domain.com`
-Username: `username`
-Password: `password`
-Server: `https://<region>-<project-id>.cloudfunctions.net/dyndns`
+* Service: `dyndns`
+* Hostname: `host.domain.com`
+* Username: `username`
+* Password: `password`
+* Server: `https://<region>-<project-id>.cloudfunctions.net/dyndns`
 
-#### Troubleshoot
+### Troubleshoot
 
 ```
 gcloud functions logs read dyndns
 ```
 
-### generate password hash
+### generate compatible password hash
 
 ```
 python3 -m venv .venv
