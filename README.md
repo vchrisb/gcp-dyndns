@@ -31,7 +31,7 @@ This setup runs succefully with configuring Unifi USG in Unifi Controller under 
 * Hostname: `host.domain.com`
 * Username: `username`
 * Password: `password`
-* Server: `https://<region>-<project-id>.cloudfunctions.net/dyndns`
+* Server: `<region>-<project-id>.cloudfunctions.net/dyndns`
 
 ### Troubleshoot
 
