@@ -57,9 +57,9 @@ def dyndns(request):
   print(f"Request Proto: {request.headers.get('X-Forwarded-Proto')}")
   print(f"Updating with IP: {myip}, Hostname: {hostname}, User: {username}")
   if update_dns(hostname, myip):
-    return ('success', 200)
+    return ('good', 200)
   else:
-    return ('error', 500)
+    return ('dnserr', 500)
 
 def update_dns(hostname, myip):
   client = dns.Client(project=project_id)
