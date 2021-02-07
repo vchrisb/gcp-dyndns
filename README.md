@@ -10,11 +10,12 @@ Parameters:
 * `DNS_ZONE`: Google Cloud DNS Zone name where the record will be managed
 * `DNS_HOSTNAME`: DNS name to be updated, to restrict the function for security concerns
 * `DNS_TTL`: Optional TTL value for record in seconds. Default is 5 minutes.
+* `GCP_PROJECT`: Project to be used
 
 ### Deploy to google functions
 
 ```
-gcloud functions deploy dyndns --entry-point dyndns --runtime python37 --trigger-http --set-env-vars DYNDNS_USERNAME=<username>,DYNDNS_PASSWORD=<password_hash>,DNS_ZONE=<zone name>,DNS_HOSTNAME=<hostname>,DNS_TTL=<ttl>
+gcloud functions deploy dyndns --entry-point dyndns --runtime python38 --trigger-http --set-env-vars DYNDNS_USERNAME=<username>,DYNDNS_PASSWORD=<password_hash>,DNS_ZONE=<zone name>,DNS_HOSTNAME=<hostname>,DNS_TTL=<ttl>,GCP_PROJECT=<gcp_project>
 ```
 
 ### access function
