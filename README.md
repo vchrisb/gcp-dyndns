@@ -15,7 +15,7 @@ Parameters:
 ### Deploy to google functions
 
 ```
-gcloud functions deploy dyndns --entry-point dyndns --runtime python38 --trigger-http --set-env-vars DYNDNS_USERNAME=<username>,DYNDNS_PASSWORD=<password_hash>,DNS_ZONE=<zone name>,DNS_HOSTNAME=<hostname>,DNS_TTL=<ttl>,GCP_PROJECT=<gcp_project>
+gcloud functions deploy dyndns --entry-point update_dns --runtime python312 --trigger-http --allow-unauthenticated --set-env-vars DYNDNS_USERNAME=<username>,DYNDNS_PASSWORD=<password_hash>,DNS_ZONE=<zone name>,DNS_HOSTNAME=<hostname>,DNS_TTL=<ttl>,GCP_PROJECT=<gcp_project>
 ```
 
 ### access function

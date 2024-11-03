@@ -1,91 +1,111 @@
-from flask_httpauth import HTTPBasicAuth
-from werkzeug.security import generate_password_hash, check_password_hash
-from google.cloud import dns
-import os
 import ipaddress
-from sys import exit
+import logging
+import re
+
+import functions_framework
+import google.cloud.logging
+from flask import Request
+from flask.typing import ResponseReturnValue
+from flask_httpauth import HTTPBasicAuth
+from werkzeug.security import check_password_hash
+
+from dyndns_service import Config, DNSUpdater, DynDNSResponse
+
+# Instantiates a client
+client = google.cloud.logging.Client()
+
+# Retrieves a Cloud Logging handler based on the environment
+# you're running in and integrates the handler with the
+# Python logging module. By default this captures all logs
+# at INFO level and higher
+client.setup_logging()
+
+# Configure logging for Google Cloud Functions
+logger = logging.getLogger()
+
+# Log initialization
+logger.info("Initializing DynDNS service...")
 
 auth = HTTPBasicAuth()
+config = Config.from_env()
+dns_updater = DNSUpdater(config)
 
-if 'DYNDNS_USERNAME' in os.environ:
-  dyndns_username = os.environ.get('DYNDNS_USERNAME')
-else:
-  raise Exception("Environment Variable DYNDNS_USERNAME needs to be specified")
 
-if 'DYNDNS_PASSWORD' in os.environ:
-  dyndns_password = os.environ.get('DYNDNS_PASSWORD')
-else:
-  raise Exception("Environment Variable DYNDNS_PASSWORD needs to be specified")
+def is_valid_fqdn(hostname: str) -> bool:
+    """Validate if a hostname is a valid FQDN"""
+    if not hostname or len(hostname) > 253:
+        return False
 
-if 'DNS_HOSTNAME' in os.environ:
-  DNS_HOSTNAME = os.environ.get('DNS_HOSTNAME')
-else:
-  raise Exception("Environment Variable DNS_HOSTNAME needs to be specified")
-
-if 'DNS_ZONE' in os.environ:
-  dns_zone = os.environ.get('DNS_ZONE')
-else:
-  raise Exception("Environment Variable DNS_ZONE needs to be specified")
-
-if 'DNS_TTL' in os.environ:
-  dns_ttl = os.getenv('DNS_TTL')
-else:
-  dns_ttl = 5 * 60  # 5 minute default
-
-if 'PROJECT_ID' in os.environ:
-  project_id = os.getenv('PROJECT_ID')
-elif 'GCP_PROJECT' in os.environ:
-  project_id = os.getenv('GCP_PROJECT')
-else:
-  raise Exception("Environment Variable PROJECT_ID or GCP_PROJECT needs to be specified")
+    hostname_regex = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,}$")
+    return bool(hostname_regex.match(hostname))
 
 
 @auth.verify_password
-def verify_password(username, password):
-  if username == dyndns_username:
-    return check_password_hash(dyndns_password, password)
-  return False
+def verify_password(username: str, password: str) -> bool:
+    """Verify request authentication"""
+    try:
+        if username != config.username:
+            return False
+        return check_password_hash(config.password_hash, password)
+    except Exception as e:
+        logger.error(f"Authentication error: {str(e)}")
+        return False
 
+
+@auth.error_handler
+def auth_error() -> ResponseReturnValue:
+    """Handle authentication errors with WWW-Authenticate header"""
+    headers = {"WWW-Authenticate": 'Basic realm="DynDNS Update Service"'}
+    return DynDNSResponse.BADAUTH.to_response(headers=headers)
+
+
+@functions_framework.http
 @auth.login_required
-def dyndns(request):
-  myip = request.args.get('myip')
-  ipaddress.ip_address(myip)
-  hostname = request.args.get('hostname')
-  username = auth.username()
-  print (f"Request Url: {request.url}")
-  #print(f"{project_id}")
-  print(f"Request Proto: {request.headers.get('X-Forwarded-Proto')}")
-  print(f"Updating with IP: {myip}, Hostname: {hostname}, User: {username}")
-  if update_dns(hostname, myip):
-    return ('good', 200)
-  else:
-    return ('dnserr', 500)
+def update_dns(request: Request) -> ResponseReturnValue:
+    """Google Cloud Function entry point"""
 
-def update_dns(hostname, myip):
-  client = dns.Client(project=project_id)
-  zone = client.zone(dns_zone)
-  record_old = None
-  if not zone.exists():
-    print(f"Zone with name: {dns_zone} does not exist!")
-    return False
-  if hostname == DNS_HOSTNAME:
-    hostname = hostname + "."
-  else:
-    print(f"Provided Hostname: {hostname} does not equal {DNS_HOSTNAME}!")
-    return False
-  resource_record_sets = zone.list_resource_record_sets()
-  for record in resource_record_sets:
-    if record.name == hostname and record.record_type == 'A':
-      record_old = record
-      if record_old.rrdatas[0] == myip:
-        print(f"Record {hostname} with IP {myip} already exists -> skipping")
-        return True
-      else:
-        print(f"Record {hostname} does exists with different IP -> updating")
-  record_new = zone.resource_record_set(hostname, 'A', dns_ttl, [myip,])
-  changes = zone.changes()
-  if not record_old is None:
-    changes.delete_record_set(record_old)
-  changes.add_record_set(record_new)
-  changes.create()
-  return True
+    # Log incoming request
+    logger.info(f"Received {request.method} request from {request.remote_addr}")
+
+    # Standard CORS headers for all responses
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Max-Age": "3600",
+    }
+
+    try:
+        # Handle OPTIONS request for CORS preflight
+        if request.method == "OPTIONS":
+            logger.info("Handling OPTIONS request")
+            return "", 204, cors_headers
+
+        # Extract and validate hostname
+        hostname = request.args.get("hostname")
+        if not hostname:
+            return DynDNSResponse.NOHOST.to_response()
+
+        if not is_valid_fqdn(hostname):
+            return DynDNSResponse.NOTFQDN.to_response()
+
+        if not dns_updater.validate_hostname(hostname):
+            return DynDNSResponse.NOHOST.to_response()
+
+        # Extract and validate IP
+        myip = request.args.get("myip")
+        try:
+            ip_obj = ipaddress.ip_address(myip)
+            if not isinstance(ip_obj, ipaddress.IPv4Address):
+                return DynDNSResponse.BADIP.to_response()
+        except (ValueError, AttributeError):
+            return DynDNSResponse.BADIP.to_response()
+
+        # Update DNS
+        if dns_updater.update_record(myip):
+            return DynDNSResponse.GOOD.to_response()
+        return DynDNSResponse.DNSERR.to_response()
+
+    except Exception as e:
+        logger.error(f"Error handling request: {str(e)}")
+        return DynDNSResponse.INTERNAL_ERROR.to_response()
